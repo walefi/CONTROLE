@@ -16,12 +16,17 @@ import type { Resultado } from "./produtos";
 
 export type ResultadoContrato = Resultado & { id?: string };
 
-function dadosLog(acao: string, detalhes: string) {
+function dadosLog(
+  acao: string,
+  detalhes: string,
+  extras?: { id_produto?: string; lote?: string; quantidade_alterada?: number }
+) {
   return {
     data: serverTimestamp(),
     usuario: obterUsuario(),
     acao,
     detalhes,
+    ...extras,
   };
 }
 
@@ -133,7 +138,12 @@ export async function alterarStatus(contratoId: string, novoStatus: Status): Pro
             doc(collection(db, "logs")),
             dadosLog(
               log.acao,
-              `${leitura.produto.item} (Lote ${leitura.produto.lote || "—"}): ${log.quantidade > 0 ? "+" : ""}${log.quantidade}`
+              `${leitura.produto.item} (Lote ${leitura.produto.lote || "—"}): ${log.quantidade > 0 ? "+" : ""}${log.quantidade}`,
+              {
+                id_produto: leitura.produto.id,
+                lote: leitura.produto.lote,
+                quantidade_alterada: log.quantidade,
+              }
             )
           );
         }
@@ -200,7 +210,8 @@ export async function adicionarItem(
             doc(collection(db, "logs")),
             dadosLog(
               `Provisionamento — Contrato ${contrato.ano_prov}`,
-              `${produto.item} (Lote ${produto.lote || "—"}): -${quantidade}`
+              `${produto.item} (Lote ${produto.lote || "—"}): -${quantidade}`,
+              { id_produto: produto.id, lote: produto.lote, quantidade_alterada: -quantidade }
             )
           );
         }
@@ -210,7 +221,8 @@ export async function adicionarItem(
             doc(collection(db, "logs")),
             dadosLog(
               `Baixa por Contrato ${contrato.ano_prov}`,
-              `${produto.item} (Lote ${produto.lote || "—"}): -${quantidade}`
+              `${produto.item} (Lote ${produto.lote || "—"}): -${quantidade}`,
+              { id_produto: produto.id, lote: produto.lote, quantidade_alterada: -quantidade }
             )
           );
         }
@@ -263,7 +275,8 @@ export async function removerItem(itemId: string): Promise<Resultado> {
             doc(collection(db, "logs")),
             dadosLog(
               `Liberação de reserva — Contrato ${contrato.ano_prov} (item removido)`,
-              `${produto.item} (Lote ${produto.lote || "—"}): +${quantidade}`
+              `${produto.item} (Lote ${produto.lote || "—"}): +${quantidade}`,
+              { id_produto: produto.id, lote: produto.lote, quantidade_alterada: quantidade }
             )
           );
         }
@@ -273,7 +286,8 @@ export async function removerItem(itemId: string): Promise<Resultado> {
             doc(collection(db, "logs")),
             dadosLog(
               `Estorno de baixa — Contrato ${contrato.ano_prov} (item removido)`,
-              `${produto.item} (Lote ${produto.lote || "—"}): +${quantidade}`
+              `${produto.item} (Lote ${produto.lote || "—"}): +${quantidade}`,
+              { id_produto: produto.id, lote: produto.lote, quantidade_alterada: quantidade }
             )
           );
         }
@@ -323,7 +337,12 @@ export async function excluirContrato(contratoId: string): Promise<Resultado> {
           doc(collection(db, "logs")),
           dadosLog(
             `Liberação de reserva — Contrato ${contrato.ano_prov} (contrato excluído)`,
-            `${leitura.produto.item} (Lote ${leitura.produto.lote || "—"}): +${leitura.quantidade}`
+            `${leitura.produto.item} (Lote ${leitura.produto.lote || "—"}): +${leitura.quantidade}`,
+            {
+              id_produto: leitura.produto.id,
+              lote: leitura.produto.lote,
+              quantidade_alterada: leitura.quantidade,
+            }
           )
         );
       }

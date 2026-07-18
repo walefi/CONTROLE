@@ -7,14 +7,15 @@ import {
   FileText,
   History,
   LayoutDashboard,
+  LogOut,
   Menu,
   MonitorPlay,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
-import { definirUsuario, obterUsuario } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -23,11 +24,17 @@ import {
 } from "@/components/ui/sheet";
 import { Toaster } from "sonner";
 
-const LINKS = [
+const LINKS_ADMIN = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/estoque", label: "Estoque", icon: Boxes },
   { href: "/contratos", label: "Contratos", icon: FileText },
   { href: "/historico", label: "Histórico", icon: History },
+];
+
+const LINKS_OPERADOR = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/estoque", label: "Estoque", icon: Boxes },
+  { href: "/contratos", label: "Contratos", icon: FileText },
 ];
 
 function Brand() {
@@ -45,9 +52,12 @@ function Brand() {
 }
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const { isAdmin } = useAuth();
+  const links = isAdmin ? LINKS_ADMIN : LINKS_OPERADOR;
+
   return (
     <nav className="flex flex-col gap-1 px-3">
-      {LINKS.map((link) => (
+      {links.map((link) => (
         <NavLink
           key={link.href}
           to={link.href}
@@ -68,21 +78,31 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function CampoUsuario() {
-  const [nome, setNome] = useState(obterUsuario());
+function UserInfo() {
+  const { user, perfil, logout } = useAuth();
   return (
-    <div className="space-y-1.5">
-      <p className="flex items-center gap-1.5 text-xs text-zinc-500">
-        <UserRound className="h-3.5 w-3.5" />
-        Operador (para o histórico)
-      </p>
-      <Input
-        value={nome}
-        onChange={(e) => setNome(e.target.value)}
-        onBlur={() => definirUsuario(nome)}
-        className="h-8 border-zinc-700 bg-zinc-900 text-sm text-white placeholder:text-zinc-500"
-        placeholder="Seu nome"
-      />
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <UserRound className="h-4 w-4 text-zinc-500" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-white">
+            {user?.email || "Usuário"}
+          </p>
+          <p className="flex items-center gap-1 text-xs text-zinc-500">
+            <ShieldCheck className="h-3 w-3" />
+            {perfil}
+          </p>
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start gap-2 text-zinc-400 hover:text-white"
+        onClick={logout}
+      >
+        <LogOut className="h-4 w-4" />
+        Sair
+      </Button>
     </div>
   );
 }
@@ -107,7 +127,7 @@ export function AppShell() {
           <NavLinks />
         </div>
         <div className="border-t border-zinc-800 p-4">
-          <CampoUsuario />
+          <UserInfo />
         </div>
       </aside>
 
@@ -133,7 +153,7 @@ export function AppShell() {
             <NavLinks onNavigate={() => setMenuAberto(false)} />
           </div>
           <div className="border-t border-zinc-800 p-4">
-            <CampoUsuario />
+            <UserInfo />
           </div>
         </SheetContent>
       </Sheet>

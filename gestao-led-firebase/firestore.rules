@@ -2,11 +2,36 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ATENCAO (PROTOTIPO): regras abertas para desenvolvimento.
-    // Antes de usar em producao com dados reais, ative o Firebase
-    // Authentication e troque a condicao para: request.auth != null
-    match /{document=**} {
-      allow read, write: if true;
+
+    // Usuários autenticados podem ler seus próprios dados
+    match /usuarios/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false; // Apenas admin cria via Console/SDK Admin
+    }
+
+    // Produtos: leitura para autenticados, escrita apenas ADMIN
+    match /produtos/{produtoId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // Contratos: leitura para autenticados, escrita apenas ADMIN
+    match /contratos/{contratoId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // Itens do contrato: leitura para autenticados, escrita apenas ADMIN
+    match /contrato_itens/{itemId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // Logs de auditoria: leitura apenas ADMIN, escrita para autenticados
+    match /logs/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false; // Logs nunca são alterados ou removidos
     }
   }
 }

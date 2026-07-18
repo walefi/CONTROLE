@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import { useColecao } from "@/hooks/use-colecao";
 import type { Contrato, ContratoItem, Produto } from "@/lib/types";
 import { StatusBadge } from "@/components/badges";
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 
 export default function ContratoDetalhe() {
   const { id } = useParams<{ id: string }>();
+  const { isAdmin } = useAuth();
   const { dados: contratos, carregando } = useColecao<Contrato>("contratos");
   const { dados: todosItens } = useColecao<ContratoItem>("contrato_itens");
   const { dados: produtos } = useColecao<Produto>("produtos");
@@ -75,7 +77,9 @@ export default function ContratoDetalhe() {
             <Printer className="h-4 w-4" />
             Exportar Resumo (PDF)
           </Link>
-          <ExcluirContratoButton id={contrato.id} anoProv={contrato.ano_prov} />
+          {isAdmin && (
+            <ExcluirContratoButton id={contrato.id} anoProv={contrato.ano_prov} />
+          )}
         </div>
       </div>
 
@@ -90,7 +94,9 @@ export default function ContratoDetalhe() {
         </div>
         <div className="space-y-6">
           <StatusCard contratoId={contrato.id} status={contrato.status} />
-          <ContratoForm key={contrato.id + contrato.atualizado_em?.toMillis()} contrato={contrato} />
+          {isAdmin && (
+            <ContratoForm key={contrato.id + contrato.atualizado_em?.toMillis()} contrato={contrato} />
+          )}
         </div>
       </div>
     </div>

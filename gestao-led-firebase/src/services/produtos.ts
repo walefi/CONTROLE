@@ -19,12 +19,17 @@ function docLog() {
   return doc(collection(db, "logs"));
 }
 
-function dadosLog(acao: string, detalhes: string) {
+function dadosLog(
+  acao: string,
+  detalhes: string,
+  extras?: { id_produto?: string; lote?: string; quantidade_alterada?: number }
+) {
   return {
     data: serverTimestamp(),
     usuario: obterUsuario(),
     acao,
     detalhes,
+    ...extras,
   };
 }
 
@@ -60,7 +65,8 @@ export async function salvarProduto(input: ProdutoForm, id?: string): Promise<Re
           docLog(),
           dadosLog(
             "Ajuste manual de estoque",
-            `${dados.item} (Lote ${dados.lote || "—"}): ${delta > 0 ? "+" : ""}${delta}`
+            `${dados.item} (Lote ${dados.lote || "—"}): ${delta > 0 ? "+" : ""}${delta}`,
+            { id_produto: id, lote: dados.lote, quantidade_alterada: delta }
           )
         );
       }
@@ -79,7 +85,8 @@ export async function salvarProduto(input: ProdutoForm, id?: string): Promise<Re
         docLog(),
         dadosLog(
           "Entrada manual (cadastro)",
-          `${dados.item} (Lote ${dados.lote || "—"}): +${dados.qtd_total}`
+          `${dados.item} (Lote ${dados.lote || "—"}): +${dados.qtd_total}`,
+          { id_produto: novoRef.id, lote: dados.lote, quantidade_alterada: dados.qtd_total }
         )
       );
     }

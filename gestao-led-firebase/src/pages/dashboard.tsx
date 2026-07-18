@@ -10,6 +10,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
 import { useColecao } from "@/hooks/use-colecao";
 import { qtdDisponivel, type Contrato, type Produto } from "@/lib/types";
 import { brl, fmtData } from "@/lib/format";
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/table";
 
 export default function Dashboard() {
+  const { isAdmin } = useAuth();
   const { dados: produtos, carregando } = useColecao<Produto>("produtos");
   const { dados: contratos } = useColecao<Contrato>("contratos");
   const [seedando, setSeedando] = useState(false);
@@ -85,22 +87,26 @@ export default function Dashboard() {
                 Carregue os dados de exemplo para ver a lógica de estoque funcionando.
               </p>
             </div>
-            <Button onClick={onCarregarExemplo} disabled={seedando}>
-              {seedando && <Loader2 className="h-4 w-4 animate-spin" />}
-              {seedando ? "Carregando..." : "Carregar dados de exemplo"}
-            </Button>
+            {isAdmin && (
+              <Button onClick={onCarregarExemplo} disabled={seedando}>
+                {seedando && <Loader2 className="h-4 w-4 animate-spin" />}
+                {seedando ? "Carregando..." : "Carregar dados de exemplo"}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          title="Valor do Estoque (Custo)"
-          value={brl(valorCusto)}
-          sub={`Potencial de revenda: ${brl(valorRevenda)}`}
-          icon={Wallet}
-          iconClass="bg-blue-50 text-blue-600"
-        />
+        {isAdmin && (
+          <MetricCard
+            title="Valor do Estoque (Custo)"
+            value={brl(valorCusto)}
+            sub={`Potencial de revenda: ${brl(valorRevenda)}`}
+            icon={Wallet}
+            iconClass="bg-blue-50 text-blue-600"
+          />
+        )}
         <MetricCard
           title="Contratos Ativos"
           value={String(ativos.length)}

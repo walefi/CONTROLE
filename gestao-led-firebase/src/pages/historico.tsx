@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, ShieldAlert } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import { useColecao } from "@/hooks/use-colecao";
 import { fmtDataHora } from "@/lib/format";
 import type { LogRegistro } from "@/lib/types";
@@ -15,12 +16,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-function extrairQuantidade(detalhes: string): number | null {
+function extrairQuantidade(detalhes: string, registro?: LogRegistro): number | null {
+  if (registro?.quantidade_alterada !== undefined) return registro.quantidade_alterada;
   const m = detalhes.match(/([+-]\d+)\s*$/);
   return m ? parseInt(m[1], 10) : null;
 }
 
 export default function Historico() {
+  const { isAdmin } = useAuth();
   const { dados: logs, carregando } = useColecao<LogRegistro>("logs", {
     ordenarPor: "data",
     direcao: "desc",
@@ -32,9 +35,23 @@ export default function Historico() {
     const termo = busca.trim().toLowerCase();
     if (!termo) return logs;
     return logs.filter((l) =>
-      `${l.usuario} ${l.acao} ${l.detalhes}`.toLowerCase().includes(termo)
+      `${l.usuario} ${l.acao} ${l.detalhes} ${l.lote || ""} ${l.id_produto || ""}`.toLowerCase().includes(termo)
     );
   }, [logs, busca]);
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+        <ShieldAlert className="h-12 w-12 text-muted-foreground" />
+        <div>
+          <p className="text-lg font-semibold">Acesso restrito</p>
+          <p className="text-sm text-muted-foreground">
+            Apenas administradores podem visualizar o histórico de movimentação.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -51,7 +68,7 @@ export default function Historico() {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-9"
-          placeholder="Filtrar por usuário, ação ou produto..."
+          placeholder="Filtrar por usuário, ação, produto ou lote..."
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
@@ -65,6 +82,8 @@ export default function Historico() {
                 <TableHead className="pl-6">Data / Hora</TableHead>
                 <TableHead>Usuário</TableHead>
                 <TableHead>Ação</TableHead>
+                <TableHead>Produto</TableHead>
+                <TableHead>Lote</TableHead>
                 <TableHead>Detalhes</TableHead>
                 <TableHead className="w-24 pr-6 text-right">Qtd</TableHead>
               </TableRow>
@@ -72,7 +91,7 @@ export default function Historico() {
             <TableBody>
               {carregando && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-28 text-center">
+                  <TableCell colSpan={7} className="h-28 text-center">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
                   </TableCell>
                 </TableRow>
@@ -80,7 +99,7 @@ export default function Historico() {
               {!carregando && filtrados.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={7}
                     className="h-28 text-center text-sm text-muted-foreground"
                   >
                     Nenhuma movimentação registrada.
@@ -88,15 +107,31 @@ export default function Historico() {
                 </TableRow>
               )}
               {filtrados.map((l) => {
-                const qtd = extrairQuantidade(l.detalhes);
+                const qtd = extrairQuantidade(l.detalhes, l);
                 return (
                   <TableRow key={l.id}>
                     <TableCell className="whitespace-nowrap pl-6 text-muted-foreground">
                       {fmtDataHora(l.data)}
                     </TableCell>
                     <TableCell className="font-medium">{l.usuario}</TableCell>
-                    <TableCell>{l.acao}</TableCell>
-                    <TableCell className="max-w-72 truncate text-muted-foreground">
+                    <TableCell className="max-w-48 truncate">{l.acao}</TableCell>
+                    <TableCell className="max-w-40 truncate text-muted-foreground">
+                      {l.id_produto ? (
+                        <span className="font-mono text-xs" title={l.id_produto}>
+                          {l.id_produto.slice(0, 8)}…
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {l.lote ? (
+                        <span className="font-mono text-xs">{l.lote}</span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-56 truncate text-muted-foreground">
                       {l.detalhes}
                     </TableCell>
                     <TableCell className="pr-6 text-right">

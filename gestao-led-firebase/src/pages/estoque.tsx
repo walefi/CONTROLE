@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
 import { useColecao } from "@/hooks/use-colecao";
 import { excluirProduto } from "@/services/produtos";
 import { CATEGORIAS, ESTOQUE_BAIXO } from "@/lib/constants";
@@ -36,6 +37,7 @@ const CATEGORIA_ITEMS = [
 ];
 
 export default function Estoque() {
+  const { isAdmin } = useAuth();
   const { dados: produtos, carregando } = useColecao<Produto>("produtos");
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("todas");
@@ -84,18 +86,20 @@ export default function Estoque() {
             {produtos.length} produto(s) cadastrado(s) · {filtrados.length} exibido(s)
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ImportarCsvDialog />
-          <Button
-            onClick={() => {
-              setEditando(null);
-              setDialogAberto(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Novo Produto
-          </Button>
-        </div>
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <ImportarCsvDialog />
+            <Button
+              onClick={() => {
+                setEditando(null);
+                setDialogAberto(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Novo Produto
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -139,15 +143,22 @@ export default function Estoque() {
                 <TableHead className="text-right">Manut.</TableHead>
                 <TableHead className="text-right">Prov.</TableHead>
                 <TableHead className="text-right">Disponível</TableHead>
-                <TableHead className="text-right">Custo</TableHead>
-                <TableHead className="text-right">Revenda</TableHead>
-                <TableHead className="w-24 pr-6 text-right">Ações</TableHead>
+                {isAdmin && (
+                  <>
+                    <TableHead className="text-right">Custo</TableHead>
+                    <TableHead className="text-right">Revenda</TableHead>
+                  </>
+                )}
+                {isAdmin && (
+                  <TableHead className="w-24 pr-6 text-right">Ações</TableHead>
+                )}
+                {!isAdmin && <TableHead className="w-24 pr-6" />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {carregando && (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-28 text-center">
+                  <TableCell colSpan={isAdmin ? 11 : 9} className="h-28 text-center">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
                   </TableCell>
                 </TableRow>
@@ -155,7 +166,7 @@ export default function Estoque() {
               {!carregando && filtrados.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={11}
+                    colSpan={isAdmin ? 11 : 9}
                     className="h-28 text-center text-sm text-muted-foreground"
                   >
                     Nenhum produto encontrado.
@@ -195,37 +206,43 @@ export default function Estoque() {
                         {disponivel}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {brl(p.valor_custo)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {brl(p.valor_revenda)}
-                    </TableCell>
-                    <TableCell className="pr-6">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          aria-label="Editar produto"
-                          onClick={() => {
-                            setEditando(p);
-                            setDialogAberto(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-600 hover:text-red-700"
-                          aria-label="Excluir produto"
-                          onClick={() => setExcluindo(p)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {isAdmin && (
+                      <>
+                        <TableCell className="text-right tabular-nums">
+                          {brl(p.valor_custo)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {brl(p.valor_revenda)}
+                        </TableCell>
+                      </>
+                    )}
+                    {isAdmin && (
+                      <TableCell className="pr-6">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Editar produto"
+                            onClick={() => {
+                              setEditando(p);
+                              setDialogAberto(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-600 hover:text-red-700"
+                            aria-label="Excluir produto"
+                            onClick={() => setExcluindo(p)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
@@ -234,23 +251,27 @@ export default function Estoque() {
         </CardContent>
       </Card>
 
-      <ProdutoDialog
-        key={editando?.id ?? "novo"}
-        open={dialogAberto}
-        onOpenChange={setDialogAberto}
-        produto={editando}
-      />
+      {isAdmin && (
+        <>
+          <ProdutoDialog
+            key={editando?.id ?? "novo"}
+            open={dialogAberto}
+            onOpenChange={setDialogAberto}
+            produto={editando}
+          />
 
-      <ConfirmDialog
-        open={!!excluindo}
-        onOpenChange={(o) => {
-          if (!o) setExcluindo(null);
-        }}
-        title="Excluir produto"
-        description={`Tem certeza que deseja excluir "${excluindo?.item ?? ""}"? Esta ação não pode ser desfeita.`}
-        loading={excluindoLoading}
-        onConfirm={confirmarExclusao}
-      />
+          <ConfirmDialog
+            open={!!excluindo}
+            onOpenChange={(o) => {
+              if (!o) setExcluindo(null);
+            }}
+            title="Excluir produto"
+            description={`Tem certeza que deseja excluir "${excluindo?.item ?? ""}"? Esta ação não pode ser desfeita.`}
+            loading={excluindoLoading}
+            onConfirm={confirmarExclusao}
+          />
+        </>
+      )}
     </div>
   );
 }

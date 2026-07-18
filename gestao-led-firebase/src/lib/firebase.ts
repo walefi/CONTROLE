@@ -1,4 +1,5 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -16,13 +17,16 @@ export const firebaseConfigurado = Boolean(
 
 let app: FirebaseApp | null = null;
 let firestore: Firestore | null = null;
+let auth: Auth | null = null;
 
 if (firebaseConfigurado) {
   app = initializeApp(firebaseConfig);
   firestore = getFirestore(app);
+  auth = getAuth(app);
 }
 
 export const db = firestore as Firestore;
+export const authInstance = auth as Auth;
 
 export function obterUsuario(): string {
   return localStorage.getItem("led_manager_usuario")?.trim() || "Operador";

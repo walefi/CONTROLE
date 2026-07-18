@@ -40,6 +40,9 @@ export type LogRegistro = {
   usuario: string;
   acao: string;
   detalhes: string;
+  id_produto?: string;
+  lote?: string;
+  quantidade_alterada?: number;
 };
 
 export type ProdutoForm = {
