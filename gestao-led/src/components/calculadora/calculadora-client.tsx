@@ -175,7 +175,9 @@ export function CalculadoraClient({
       { categoria: "Fonte", qtd: result.totalFontes },
       { categoria: "Processadora", qtd: result.totalProcessadoras },
       { categoria: "Gabinete", qtd: result.totalGabinetes },
-      { categoria: "Imã", qtd: result.totalImas },
+      ...(config.tipoPainel !== "gabinete"
+        ? [{ categoria: "Imã" as const, qtd: result.totalImas }]
+        : []),
     ];
 
     for (const { categoria, qtd } of items) {
@@ -474,7 +476,9 @@ export function CalculadoraClient({
             <CardTitle className="text-base">Seleção de Itens do Estoque</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {(["Módulo", "Receiver", "Fonte", "Processadora", "Gabinete", "Imã"] as const).map((cat) => {
+            {((["Módulo", "Receiver", "Fonte", "Processadora", "Gabinete", "Imã"] as const).filter(
+              (cat) => !(config.tipoPainel === "gabinete" && cat === "Imã")
+            )).map((cat) => {
               const keyMap: Record<string, keyof CalculadoraConfig> = {
                 Módulo: "moduloProdutoId",
                 Receiver: "receivingProdutoId",
@@ -681,16 +685,18 @@ export function CalculadoraClient({
                       {custos?.total["Processadora"] ? brl(custos.total["Processadora"]) : "—"}
                     </TableCell>
                   </TableRow>
-                  <TableRow>
-                    <TableCell className="pl-6 font-medium">Imãs</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{result.totalImas}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      Modelo {config.modeloIma} · 4 por módulo
-                    </TableCell>
-                    <TableCell className="text-right pr-6 tabular-nums">
-                      {custos?.total["Imã"] ? brl(custos.total["Imã"]) : "—"}
-                    </TableCell>
-                  </TableRow>
+                  {config.tipoPainel !== "gabinete" && (
+                    <TableRow>
+                      <TableCell className="pl-6 font-medium">Imãs</TableCell>
+                      <TableCell className="text-right tabular-nums font-semibold">{result.totalImas}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        Modelo {config.modeloIma} · 4 por módulo
+                      </TableCell>
+                      <TableCell className="text-right pr-6 tabular-nums">
+                        {custos?.total["Imã"] ? brl(custos.total["Imã"]) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {custos && custos.geral > 0 && (
                     <TableRow className="bg-muted/30">
                       <TableCell className="pl-6 font-bold">Total Geral</TableCell>

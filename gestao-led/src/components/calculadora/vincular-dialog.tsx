@@ -46,7 +46,9 @@ function collectItems(
     ["Fonte", "fonteProdutoId", result.totalFontes],
     ["Processadora", "processadoraProdutoId", result.totalProcessadoras],
     ["Gabinete", "gabineteProdutoId", result.totalGabinetes],
-    ["Imã", "imaProdutoId", result.totalImas],
+    ...(config.tipoPainel !== "gabinete"
+      ? [["Imã", "imaProdutoId" as keyof CalculadoraConfig, result.totalImas] as [string, keyof CalculadoraConfig, number]]
+      : []),
   ];
 
   for (const [cat, key, qtd] of map) {
