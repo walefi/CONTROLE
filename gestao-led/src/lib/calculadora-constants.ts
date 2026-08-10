@@ -82,12 +82,16 @@ export const FONTES: FonteSpec[] = [
 export const MODULOS_POR_FONTE: Record<string, number> = {
   "40A-indoor-320x160": 9,
   "40A-outdoor-320x160": 4,
+  "40A-blindado-320x160": 4,
   "40A-indoor-250x250": 6,
   "40A-outdoor-250x250": 4,
+  "40A-blindado-250x250": 4,
   "60A-indoor-320x160": 12,
   "60A-outdoor-320x160": 6,
+  "60A-blindado-320x160": 6,
   "60A-indoor-250x250": 8,
   "60A-outdoor-250x250": 8,
+  "60A-blindado-250x250": 8,
 };
 
 // --- Processadoras ---
@@ -154,7 +158,7 @@ export const IMAS_POR_MODULO = 4;
 
 // --- Ambiente ---
 
-export const AMBIENTES = ["Indoor", "Outdoor"] as const;
+export const AMBIENTES = ["Indoor", "Outdoor", "Blindado"] as const;
 export type Ambiente = (typeof AMBIENTES)[number];
 
 // --- Distância máxima do cabo entre módulo e receiving card (metros) ---
