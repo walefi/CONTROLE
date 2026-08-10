@@ -1,6 +1,7 @@
 import {
   DISTANCIA_MAXIMA_CABO,
   IMAS_POR_MODULO,
+  MAX_ALTURA_MODULOS_POR_RECEIVER,
   MODULOS_POR_FONTE,
   PROCESSADORAS,
   type ReceivingCardSpec,
@@ -50,73 +51,34 @@ function calcGabinetes(
   return { horizontais: h, verticais: v, total: h * v };
 }
 
-function calcReceivingCards(
-  modulos: number,
+function calcReceivingCardsPorLinhas(
+  modulosH: number,
+  modulosV: number,
   cascadeCount: number,
-  portsPerCard: number,
-) {
+  modPxW: number,
+  modPxH: number,
+  receiving: ReceivingCardSpec,
+): number {
+  const maxRowsByPixel = Math.floor(receiving.maxPixels.altura / modPxH);
+  const maxColsByPixel = Math.floor(receiving.maxPixels.largura / modPxW);
+
+  const rowsPerRx = Math.min(
+    receiving.portas,
+    MAX_ALTURA_MODULOS_POR_RECEIVER,
+    maxRowsByPixel,
+  );
+
   const modulosPorPorta = 1 + cascadeCount;
-  const portasNecessarias = Math.ceil(modulos / modulosPorPorta);
-  const receivers = Math.ceil(portasNecessarias / portsPerCard);
-  return receivers;
-}
+  const colsPerRxCol = Math.min(modulosPorPorta, maxColsByPixel);
 
-function calcReceivingCardsAvancado(
-  modulos: number,
-  groups: { receivers: number; cascadeCount: number }[],
-  portsPerCard: number,
-) {
-  let modulosAtendidos = 0;
-  let totalReceivers = 0;
-  for (const g of groups) {
-    const modulosPorPorta = 1 + g.cascadeCount;
-    const modulosPorReceiver = portsPerCard * modulosPorPorta;
-    modulosAtendidos += g.receivers * modulosPorReceiver;
-    totalReceivers += g.receivers;
+  if (rowsPerRx <= 0 || colsPerRxCol <= 0) {
+    return modulosH * modulosV;
   }
-  const faltam = modulos - modulosAtendidos;
-  if (faltam > 0) {
-    totalReceivers += Math.ceil(faltam / portsPerCard);
-  }
-  return totalReceivers;
-}
 
-function verificarPixelCapacity(
-  receivers: number,
-  modulos: number,
-  moduloPxW: number,
-  moduloPxH: number,
-  receiving: ReceivingCardSpec,
-): number {
-  const modulosPorReceiver = Math.ceil(modulos / receivers);
-  const pxPorReceiver = modulosPorReceiver * moduloPxW * moduloPxH;
-  const maxPx = receiving.maxPixels.largura * receiving.maxPixels.altura;
-  if (pxPorReceiver > maxPx) {
-    return Math.ceil((modulos * moduloPxW * moduloPxH) / maxPx);
-  }
-  return receivers;
-}
+  const rxCols = Math.ceil(modulosH / colsPerRxCol);
+  const rxRows = Math.ceil(modulosV / rowsPerRx);
 
-function verificarDimensoesPixel(
-  receivers: number,
-  modulos: number,
-  modulosHorizontais: number,
-  moduloPxW: number,
-  moduloPxH: number,
-  receiving: ReceivingCardSpec,
-): number {
-  const modulosPorReceiver = Math.ceil(modulos / receivers);
-  const colsPorReceiver = Math.min(modulosPorReceiver, modulosHorizontais);
-  const pxW = colsPorReceiver * moduloPxW;
-  const remainingModulos = modulosPorReceiver - colsPorReceiver;
-  const rows = remainingModulos > 0 ? Math.ceil(remainingModulos / colsPorReceiver) + 1 : 1;
-  const pxH = rows * moduloPxH;
-  if (pxW > receiving.maxPixels.largura || pxH > receiving.maxPixels.altura) {
-    const byWidth = Math.ceil(pxW / receiving.maxPixels.largura);
-    const byHeight = Math.ceil(pxH / receiving.maxPixels.altura);
-    return receivers * Math.max(byWidth, byHeight);
-  }
-  return receivers;
+  return rxCols * rxRows;
 }
 
 function distanciaMaximaOk(
@@ -173,7 +135,8 @@ export function calcular(config: CalculadoraConfig): CalculadoraResult {
   let gabinetesV = 0;
   let totalGabinetes = 0;
   let unidades = 1;
-  let modulosPorUnidade = modulos.total;
+  let modulosPorUnidadeH = modulos.horizontais;
+  let modulosPorUnidadeV = modulos.verticais;
 
   if (config.tipoPainel === "gabinete" && config.gabinete) {
     const mpc = calcModulosPorGabinete(
@@ -185,53 +148,40 @@ export function calcular(config: CalculadoraConfig): CalculadoraResult {
     modulosPorGabineteH = mpc.h;
     modulosPorGabineteV = mpc.v;
     modulosPorGabinete = mpc.total;
-    const g = calcGabinetes(modulos.horizontais, modulos.verticais, mpc.h, mpc.v);
+    const g = calcGabinetes(
+      modulos.horizontais,
+      modulos.verticais,
+      mpc.h,
+      mpc.v,
+    );
     gabinetesH = g.horizontais;
     gabinetesV = g.verticais;
     totalGabinetes = g.total;
     if (modulosPorGabinete > 0) {
       unidades = totalGabinetes;
-      modulosPorUnidade = modulosPorGabinete;
+      modulosPorUnidadeH = mpc.h;
+      modulosPorUnidadeV = mpc.v;
     }
   }
 
   const { receivingCard } = config;
-  let totalReceivingCards: number;
+  const cascadeCount = config.cascatear ? 1 : 0;
 
-  if (config.cascadeGroups.length > 0) {
-    totalReceivingCards =
-      calcReceivingCardsAvancado(
-        modulosPorUnidade,
-        config.cascadeGroups,
-        receivingCard.portas,
-      ) * unidades;
-  } else {
-    const cascadeCount = config.cascatear ? 1 : 0;
-    totalReceivingCards =
-      calcReceivingCards(modulosPorUnidade, cascadeCount, receivingCard.portas) *
-      unidades;
-  }
-
-  totalReceivingCards = verificarPixelCapacity(
-    totalReceivingCards,
-    modulos.total,
+  const receiversPorUnidade = calcReceivingCardsPorLinhas(
+    modulosPorUnidadeH,
+    modulosPorUnidadeV,
+    cascadeCount,
     modPxW,
     modPxH,
     receivingCard,
   );
 
-  totalReceivingCards = verificarDimensoesPixel(
-    totalReceivingCards,
-    modulos.total,
-    modulos.horizontais,
-    modPxW,
-    modPxH,
-    receivingCard,
-  );
+  let totalReceivingCards = receiversPorUnidade * unidades;
 
   if (!distanciaMaximaOk(larguraMm, alturaMm, totalReceivingCards)) {
     const areaTotal = larguraMm * alturaMm;
-    const areaPorReceiver = Math.PI * Math.pow(DISTANCIA_MAXIMA_CABO * 1000, 2);
+    const areaPorReceiver =
+      Math.PI * Math.pow(DISTANCIA_MAXIMA_CABO * 1000, 2);
     const minPorDistancia = Math.ceil(areaTotal / areaPorReceiver);
     totalReceivingCards = Math.max(totalReceivingCards, minPorDistancia);
   }
@@ -247,8 +197,16 @@ export function calcular(config: CalculadoraConfig): CalculadoraResult {
     totalPixels.altura,
   );
 
-  const custoUnitario: Record<string, number> = {};
-  const custoTotal: Record<string, number> = {};
+  const rowsPerRx = Math.min(
+    receivingCard.portas,
+    MAX_ALTURA_MODULOS_POR_RECEIVER,
+    Math.floor(receivingCard.maxPixels.altura / modPxH),
+  );
+  const modulosPorPorta = 1 + cascadeCount;
+  const colsPorRx = Math.min(
+    modulosPorPorta,
+    Math.floor(receivingCard.maxPixels.largura / modPxW),
+  );
 
   return {
     larguraMm,
@@ -265,21 +223,15 @@ export function calcular(config: CalculadoraConfig): CalculadoraResult {
     totalGabinetes,
     totalReceivingCards,
     pixelsPorReceiving: {
-      largura: Math.min(
-        (Math.ceil(modulos.total / totalReceivingCards)) * modPxW,
-        totalPixels.largura,
-      ),
-      altura: Math.min(
-        modPxH * (config.cascatear ? 2 : 1),
-        totalPixels.altura,
-      ),
+      largura: colsPorRx * modPxW,
+      altura: rowsPerRx * modPxH,
     },
     totalFontes,
     modulosPorFonte: mpf,
     totalImas,
     totalProcessadoras,
-    custoUnitario,
-    custoTotal,
+    custoUnitario: {},
+    custoTotal: {},
     custoTotalGeral: 0,
   };
 }

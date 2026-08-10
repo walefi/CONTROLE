@@ -159,3 +159,6 @@ export type Ambiente = (typeof AMBIENTES)[number];
 
 // --- Distância máxima do cabo entre módulo e receiving card (metros) ---
 export const DISTANCIA_MAXIMA_CABO = 1;
+
+// --- Altura máxima de módulos por receiving card ---
+export const MAX_ALTURA_MODULOS_POR_RECEIVER = 12;

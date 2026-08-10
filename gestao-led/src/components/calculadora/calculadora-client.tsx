@@ -96,6 +96,25 @@ export function CalculadoraClient({
         next.gabinete = null;
         next.cascadeGroups = [];
       }
+      if (key === "tipoHub") {
+        const compativeis = RECEIVING_CARDS.filter((r) => r.tipoHub === value);
+        if (compativeis.length > 0 && !compativeis.some((r) => r.modelo === prev.receivingCard.modelo)) {
+          next.receivingCard = compativeis[0];
+        }
+      }
+      if (key === "modulo" && prev.tipoPainel === "gabinete" && prev.gabinete) {
+        const mod = value as typeof prev.modulo;
+        const h = Math.floor(prev.gabinete.largura / mod.dimensao.largura);
+        const v = Math.floor(prev.gabinete.altura / mod.dimensao.altura);
+        if (h * v === 0) {
+          const primeiraComp = GABINETES.find((g) => {
+            const gh = Math.floor(g.largura / mod.dimensao.largura);
+            const gv = Math.floor(g.altura / mod.dimensao.altura);
+            return gh * gv > 0;
+          });
+          next.gabinete = primeiraComp ?? null;
+        }
+      }
       return next;
     });
   }
@@ -113,6 +132,20 @@ export function CalculadoraClient({
     }
     return map;
   }, [produtos]);
+
+  const gabinetesCompativeis = useMemo(() => {
+    const modW = config.modulo.dimensao.largura;
+    const modH = config.modulo.dimensao.altura;
+    return GABINETES.map((g, i) => {
+      const h = Math.floor(g.largura / modW);
+      const v = Math.floor(g.altura / modH);
+      return { gabinete: g, index: i, compativel: h * v > 0, modulosH: h, modulosV: v };
+    });
+  }, [config.modulo]);
+
+  const receiversCompativeis = useMemo(() => {
+    return RECEIVING_CARDS.filter((r) => r.tipoHub === config.tipoHub);
+  }, [config.tipoHub]);
 
   function selecionarProduto(categoria: string): ProdutoRow | null {
     const keyMap: Record<string, keyof CalculadoraConfig> = {
@@ -227,7 +260,9 @@ export function CalculadoraClient({
               <div className="space-y-2">
                 <Label>Modelo do Gabinete</Label>
                 <Select
-                  items={GABINETES.map((g, i) => ({ value: String(i), label: formatGabineteOption(g) }))}
+                  items={gabinetesCompativeis
+                    .filter((g) => g.compativel)
+                    .map((g) => ({ value: String(g.index), label: formatGabineteOption(g.gabinete) }))}
                   value={config.gabinete ? String(GABINETES.indexOf(config.gabinete)) : ""}
                   onValueChange={(v) => update("gabinete", GABINETES[Number(v)])}
                 >
@@ -235,13 +270,29 @@ export function CalculadoraClient({
                     <SelectValue placeholder="Selecione o gabinete" />
                   </SelectTrigger>
                   <SelectContent>
-                    {GABINETES.map((g, i) => (
-                      <SelectItem key={i} value={String(i)}>
-                        {formatGabineteOption(g)}
+                    {gabinetesCompativeis.map((g) => (
+                      <SelectItem key={g.index} value={String(g.index)} disabled={!g.compativel}>
+                        <span>
+                          {formatGabineteOption(g.gabinete)}
+                          {!g.compativel && (
+                            <span className="ml-2 text-xs text-red-500">incompatível</span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {config.gabinete && (() => {
+                  const gc = gabinetesCompativeis.find((g) => g.gabinete === config.gabinete);
+                  if (gc && !gc.compativel) {
+                    return (
+                      <p className="text-xs text-red-500">
+                        O módulo {config.modulo.pitch} ({config.modulo.dimensao.largura}×{config.modulo.dimensao.altura}mm) não cabe neste gabinete.
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             )}
           </CardContent>
@@ -330,10 +381,13 @@ export function CalculadoraClient({
             <div className="space-y-2">
               <Label>Modelo do Receiving Card</Label>
               <Select
-                items={RECEIVING_CARDS.map((r) => ({ value: r.modelo, label: `${r.modelo} (${r.portas} portas ${r.tipoHub})` }))}
+                items={receiversCompativeis.map((r) => ({
+                  value: r.modelo,
+                  label: `${r.modelo} (${r.portas} portas ${r.tipoHub})`,
+                }))}
                 value={config.receivingCard.modelo}
                 onValueChange={(v) => {
-                  const found = RECEIVING_CARDS.find((r) => r.modelo === v);
+                  const found = receiversCompativeis.find((r) => r.modelo === v);
                   if (found) update("receivingCard", found);
                 }}
               >
@@ -341,13 +395,23 @@ export function CalculadoraClient({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {RECEIVING_CARDS.map((r) => (
+                  {receiversCompativeis.length === 0 && (
+                    <SelectItem value="" disabled>
+                      Nenhum receiver compatível com {config.tipoHub}
+                    </SelectItem>
+                  )}
+                  {receiversCompativeis.map((r) => (
                     <SelectItem key={r.modelo} value={r.modelo}>
                       {r.modelo} ({r.portas} portas {r.tipoHub})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {receiversCompativeis.length === 0 && (
+                <p className="text-xs text-red-500">
+                  Nenhum receiving card disponível para o HUB selecionado ({config.tipoHub}).
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
