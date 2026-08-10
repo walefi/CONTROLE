@@ -9,6 +9,7 @@ import Estoque from "@/pages/estoque";
 import Contratos from "@/pages/contratos";
 import ContratoDetalhe from "@/pages/contrato-detalhe";
 import ContratoImprimir from "@/pages/contrato-imprimir";
+import Calculadora from "@/pages/calculadora";
 import Historico from "@/pages/historico";
 import LoginPage from "@/pages/login";
 
@@ -71,6 +72,7 @@ function RotasProtegidas() {
           <Route path="/contratos" element={<Contratos />} />
           <Route path="/contratos/:id" element={<ContratoDetalhe />} />
           <Route path="/contratos/:id/imprimir" element={<ContratoImprimir />} />
+          <Route path="/calculadora" element={<Calculadora />} />
           <Route path="/historico" element={<Historico />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

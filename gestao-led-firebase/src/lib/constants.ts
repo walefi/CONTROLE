@@ -4,6 +4,7 @@ export const CATEGORIAS = [
   "Processadora",
   "Receiver",
   "Gabinete",
+  "Imã",
   "Outros",
 ] as const;
 
@@ -59,6 +60,7 @@ export const CATEGORIA_BADGE: Record<string, string> = {
   Processadora: "border-sky-200 bg-sky-50 text-sky-700",
   Receiver: "border-teal-200 bg-teal-50 text-teal-700",
   Gabinete: "border-stone-200 bg-stone-100 text-stone-700",
+  Imã: "border-rose-200 bg-rose-50 text-rose-700",
   Outros: "border-gray-200 bg-gray-100 text-gray-700",
 };
 

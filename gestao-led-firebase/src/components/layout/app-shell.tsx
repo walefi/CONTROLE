@@ -4,6 +4,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Boxes,
+  Calculator,
   FileText,
   History,
   LayoutDashboard,
@@ -28,6 +29,7 @@ const LINKS_ADMIN = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/estoque", label: "Estoque", icon: Boxes },
   { href: "/contratos", label: "Contratos", icon: FileText },
+  { href: "/calculadora", label: "Calculadora", icon: Calculator },
   { href: "/historico", label: "Histórico", icon: History },
 ];
 
@@ -35,6 +37,7 @@ const LINKS_OPERADOR = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/estoque", label: "Estoque", icon: Boxes },
   { href: "/contratos", label: "Contratos", icon: FileText },
+  { href: "/calculadora", label: "Calculadora", icon: Calculator },
 ];
 
 function Brand() {
