@@ -217,3 +217,106 @@ export async function excluirContrato(id: number): Promise<ActionResult> {
     return { ok: false, message: "Erro ao excluir o contrato." };
   }
 }
+
+export async function vincularItensAoContrato(
+  contratoId: number,
+  itens: { produtoId: number; quantidade: number }[]
+): Promise<ActionResult> {
+  try {
+    const validos = itens.filter((i) => i.produtoId && i.quantidade > 0);
+    if (validos.length === 0) {
+      return { ok: false, message: "Nenhum item válido para vincular." };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const contrato = await tx.contrato.findUniqueOrThrow({ where: { id: contratoId } });
+      const efeito = stockEffect(contrato.status);
+
+      for (const item of validos) {
+        const produto = await tx.produto.findUniqueOrThrow({ where: { id: item.produtoId } });
+
+        if (efeito !== "NONE") {
+          const disponivel = qtdDisponivel(produto);
+          if (disponivel < item.quantidade) {
+            throw new Error(
+              `Estoque insuficiente para "${produto.item}" (disp: ${disponivel}, nec: ${item.quantidade}).`
+            );
+          }
+          if (efeito === "RESERVE") {
+            await tx.produto.update({
+              where: { id: item.produtoId },
+              data: { qtdProvisionado: { increment: item.quantidade } },
+            });
+          }
+          if (efeito === "SHIP") {
+            await tx.produto.update({
+              where: { id: item.produtoId },
+              data: { qtdTotal: { decrement: item.quantidade } },
+            });
+          }
+        }
+
+        await tx.contratoItem.upsert({
+          where: { contratoId_produtoId: { contratoId, produtoId: item.produtoId } },
+          create: { contratoId, produtoId: item.produtoId, quantidade: item.quantidade },
+          update: { quantidade: { increment: item.quantidade } },
+        });
+      }
+    });
+
+    revalidatePath("/", "layout");
+    return { ok: true, message: `${validos.length} item(ns) vinculado(s) ao contrato com sucesso.` };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Erro ao vincular itens ao contrato.",
+    };
+  }
+}
+
+export async function criarEVincular(
+  input: ContratoInput,
+  tamanhoPainel: string,
+  itens: { produtoId: number; quantidade: number }[]
+): Promise<ActionResult & { contratoId?: number }> {
+  try {
+    const validos = itens.filter((i) => i.produtoId && i.quantidade > 0);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const contrato = await tx.contrato.create({
+        data: {
+          anoProv: input.anoProv.trim(),
+          cliente: input.cliente.trim(),
+          tamanhoPainel: tamanhoPainel,
+          prazo: parsePrazo(input.prazo),
+          observacoes: input.observacoes.trim(),
+          status: "ORCAMENTO",
+        },
+      });
+
+      for (const item of validos) {
+        await tx.contratoItem.create({
+          data: {
+            contratoId: contrato.id,
+            produtoId: item.produtoId,
+            quantidade: item.quantidade,
+          },
+        });
+      }
+
+      return contrato.id;
+    });
+
+    revalidatePath("/", "layout");
+    return {
+      ok: true,
+      message: `Contrato criado com ${validos.length} item(ns) vinculado(s).`,
+      contratoId: result,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Erro ao criar contrato com itens.",
+    };
+  }
+}

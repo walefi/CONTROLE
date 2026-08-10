@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Link } from "lucide-react";
 import { calcular } from "@/lib/calculadora";
 import {
   AMBIENTES,
   FONTES,
   GABINETES,
+  MODELOS_IMA,
   RECEIVING_CARDS,
   TECNOLOGIAS_MODULO,
   TIPOS_HUB,
@@ -35,6 +37,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { VincularDialog } from "@/components/calculadora/vincular-dialog";
+import type { ContratoResumo } from "@/app/(app)/calculadora/page";
 
 function formatModuloOption(m: ModuloLedSpec): string {
   return `${m.pitch} — ${m.resolucao.largura}×${m.resolucao.altura}px (${m.dimensao.largura}×${m.dimensao.altura}mm)`;
@@ -75,8 +79,15 @@ function buildDefaultConfig(): CalculadoraConfig {
   };
 }
 
-export function CalculadoraClient({ produtos }: { produtos: ProdutoRow[] }) {
+export function CalculadoraClient({
+  produtos,
+  contratos,
+}: {
+  produtos: ProdutoRow[];
+  contratos: ContratoResumo[];
+}) {
   const [config, setConfig] = useState<CalculadoraConfig>(buildDefaultConfig);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   function update<K extends keyof CalculadoraConfig>(key: K, value: CalculadoraConfig[K]) {
     setConfig((prev) => {
@@ -313,7 +324,7 @@ export function CalculadoraClient({ produtos }: { produtos: ProdutoRow[] }) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Receiving Card e Fonte</CardTitle>
+            <CardTitle className="text-base">Receiving Card, Fonte e Imã</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -338,7 +349,7 @@ export function CalculadoraClient({ produtos }: { produtos: ProdutoRow[] }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Fonte</Label>
                 <Select
@@ -369,6 +380,23 @@ export function CalculadoraClient({ produtos }: { produtos: ProdutoRow[] }) {
                   <SelectContent>
                     {AMBIENTES.map((a) => (
                       <SelectItem key={a} value={a}>{a}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Modelo do Imã</Label>
+                <Select
+                  items={MODELOS_IMA.map((m) => ({ value: m, label: m }))}
+                  value={config.modeloIma}
+                  onValueChange={(v) => update("modeloIma", v as typeof config.modeloIma)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODELOS_IMA.map((m) => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -615,6 +643,28 @@ export function CalculadoraClient({ produtos }: { produtos: ProdutoRow[] }) {
           </Table>
         </CardContent>
       </Card>
+
+      {result && result.totalModulos > 0 && (
+        <div className="flex justify-end">
+          <Button
+            size="lg"
+            className="gap-2"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Link className="h-4 w-4" />
+            Vincular ao Contrato
+          </Button>
+        </div>
+      )}
+
+      <VincularDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        config={config}
+        result={result}
+        produtos={produtos}
+        contratos={contratos}
+      />
     </div>
   );
 }
