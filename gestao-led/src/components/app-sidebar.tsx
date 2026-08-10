@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Boxes, FileText, LayoutDashboard, MonitorPlay } from "lucide-react";
+import { Boxes, Calculator, FileText, LayoutDashboard, MonitorPlay } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/estoque", label: "Estoque", icon: Boxes },
   { href: "/contratos", label: "Contratos", icon: FileText },
+  { href: "/calculadora", label: "Calculadora", icon: Calculator },
 ];
 
 export function Brand() {
