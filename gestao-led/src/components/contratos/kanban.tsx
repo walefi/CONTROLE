@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, GripVertical, Monitor, Package } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +16,10 @@ export function Kanban({ contratos: initialContratos }: { contratos: ContratoCar
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
   const dragSourceStatus = useRef<Status | null>(null);
+
+  useEffect(() => {
+    setContratos(initialContratos);
+  }, [initialContratos]);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: number, status: Status) => {
     setDraggedId(id);
