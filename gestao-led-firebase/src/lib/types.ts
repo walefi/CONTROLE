@@ -1,5 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 import type { Status } from "./constants";
+import type { ConfigCalculadoraContrato } from "./types-calculadora";
 
 export type Produto = {
   id: string;
@@ -25,6 +26,7 @@ export type Contrato = {
   observacoes: string;
   criado_em?: Timestamp | null;
   atualizado_em?: Timestamp | null;
+  config_calculadora?: ConfigCalculadoraContrato | null;
 };
 
 export type ContratoItem = {

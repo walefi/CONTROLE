@@ -12,6 +12,7 @@ import { db, obterUsuario } from "@/lib/firebase";
 import { STATUS_LIST, STATUS_META, type Status } from "@/lib/constants";
 import { calcularTransicao, stockEffect } from "@/lib/stock";
 import { qtdDisponivel, type Contrato, type ContratoForm, type Produto } from "@/lib/types";
+import type { ConfigCalculadoraContrato } from "@/lib/types-calculadora";
 import type { Resultado } from "./produtos";
 
 export type ResultadoContrato = Resultado & { id?: string };
@@ -362,6 +363,182 @@ export async function excluirContrato(contratoId: string): Promise<Resultado> {
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Erro ao excluir o contrato.",
+    };
+  }
+}
+
+export type AlteracaoLoteItem = { itemId: string; novoProdutoId: string };
+
+export async function salvarPlanejamentoContrato(
+  contratoId: string,
+  alteracoes: AlteracaoLoteItem[],
+  config: ConfigCalculadoraContrato | null
+): Promise<Resultado> {
+  if (alteracoes.length === 0 && !config) return { ok: true, message: "Nada para salvar." };
+
+  try {
+    const itensContrato = await getDocs(
+      query(collection(db, "contrato_itens"), where("id_contrato", "==", contratoId))
+    );
+
+    const atualizados = await runTransaction(db, async (trx) => {
+      const contratoRef = doc(db, "contratos", contratoId);
+      const contratoSnap = await trx.get(contratoRef);
+      if (!contratoSnap.exists()) throw new Error("Contrato não encontrado.");
+      const contrato = contratoSnap.data() as Contrato;
+      const efeito = stockEffect(contrato.status);
+
+      const leituras: {
+        itemRef: ReturnType<typeof doc>;
+        quantidade: number;
+        antigoRef: ReturnType<typeof doc>;
+        antigo: Produto | null;
+        novoRef: ReturnType<typeof doc>;
+        novo: Produto;
+        mergeRef: ReturnType<typeof doc> | null;
+        mergeQuantidade: number;
+      }[] = [];
+
+      for (const alteracao of alteracoes) {
+        const itemRef = doc(db, "contrato_itens", alteracao.itemId);
+        const itemSnap = await trx.get(itemRef);
+        if (!itemSnap.exists()) continue;
+        const item = itemSnap.data();
+        const quantidade = Number(item.quantidade) || 0;
+        if (String(item.id_produto) === alteracao.novoProdutoId) continue;
+
+        const novoRef = doc(db, "produtos", alteracao.novoProdutoId);
+        const novoSnap = await trx.get(novoRef);
+        if (!novoSnap.exists()) throw new Error("Produto não encontrado.");
+        const novo = { id: novoSnap.id, ...novoSnap.data() } as Produto;
+
+        const antigoRef = doc(db, "produtos", String(item.id_produto));
+        const antigoSnap = await trx.get(antigoRef);
+        const antigo = antigoSnap.exists()
+          ? ({ id: antigoSnap.id, ...antigoSnap.data() } as Produto)
+          : null;
+
+        let mergeRef: ReturnType<typeof doc> | null = null;
+        let mergeQuantidade = 0;
+        const mergeItem = itensContrato.docs.find(
+          (d) =>
+            d.id !== alteracao.itemId &&
+            String(d.data().id_produto) === alteracao.novoProdutoId
+        );
+        if (mergeItem) {
+          const mergeSnap = await trx.get(mergeItem.ref);
+          if (mergeSnap.exists()) {
+            mergeRef = mergeItem.ref;
+            mergeQuantidade = Number(mergeSnap.data().quantidade) || 0;
+          }
+        }
+
+        leituras.push({ itemRef, quantidade, antigoRef, antigo, novoRef, novo, mergeRef, mergeQuantidade });
+      }
+
+      let atualizados = 0;
+      for (const leitura of leituras) {
+        if (efeito !== "NONE") {
+          const disponivel = qtdDisponivel(leitura.novo);
+          if (disponivel < leitura.quantidade) {
+            throw new Error(
+              `Estoque insuficiente para "${leitura.novo.item}" (disponível: ${disponivel}, solicitado: ${leitura.quantidade}).`
+            );
+          }
+        }
+
+        if (leitura.antigo) {
+          if (efeito === "RESERVE") {
+            trx.update(leitura.antigoRef, {
+              qtd_provisionado: Math.max(0, leitura.antigo.qtd_provisionado - leitura.quantidade),
+            });
+            trx.set(
+              doc(collection(db, "logs")),
+              dadosLog(
+                `Liberação de reserva — Contrato ${contrato.ano_prov} (troca de lote)`,
+                `${leitura.antigo.item} (Lote ${leitura.antigo.lote || "—"}): +${leitura.quantidade}`,
+                {
+                  id_produto: leitura.antigo.id,
+                  lote: leitura.antigo.lote,
+                  quantidade_alterada: leitura.quantidade,
+                }
+              )
+            );
+          }
+          if (efeito === "SHIP") {
+            trx.update(leitura.antigoRef, { qtd_total: leitura.antigo.qtd_total + leitura.quantidade });
+            trx.set(
+              doc(collection(db, "logs")),
+              dadosLog(
+                `Estorno de baixa — Contrato ${contrato.ano_prov} (troca de lote)`,
+                `${leitura.antigo.item} (Lote ${leitura.antigo.lote || "—"}): +${leitura.quantidade}`,
+                {
+                  id_produto: leitura.antigo.id,
+                  lote: leitura.antigo.lote,
+                  quantidade_alterada: leitura.quantidade,
+                }
+              )
+            );
+          }
+        }
+
+        if (efeito === "RESERVE") {
+          trx.update(leitura.novoRef, {
+            qtd_provisionado: leitura.novo.qtd_provisionado + leitura.quantidade,
+          });
+          trx.set(
+            doc(collection(db, "logs")),
+            dadosLog(
+              `Provisionamento — Contrato ${contrato.ano_prov} (troca de lote)`,
+              `${leitura.novo.item} (Lote ${leitura.novo.lote || "—"}): -${leitura.quantidade}`,
+              {
+                id_produto: leitura.novo.id,
+                lote: leitura.novo.lote,
+                quantidade_alterada: -leitura.quantidade,
+              }
+            )
+          );
+        }
+        if (efeito === "SHIP") {
+          trx.update(leitura.novoRef, { qtd_total: leitura.novo.qtd_total - leitura.quantidade });
+          trx.set(
+            doc(collection(db, "logs")),
+            dadosLog(
+              `Baixa por Contrato ${contrato.ano_prov} (troca de lote)`,
+              `${leitura.novo.item} (Lote ${leitura.novo.lote || "—"}): -${leitura.quantidade}`,
+              {
+                id_produto: leitura.novo.id,
+                lote: leitura.novo.lote,
+                quantidade_alterada: -leitura.quantidade,
+              }
+            )
+          );
+        }
+
+        if (leitura.mergeRef) {
+          trx.update(leitura.mergeRef, {
+            quantidade: leitura.mergeQuantidade + leitura.quantidade,
+          });
+          trx.delete(leitura.itemRef);
+        } else {
+          trx.update(leitura.itemRef, { id_produto: leitura.novo.id });
+        }
+        atualizados++;
+      }
+
+      trx.update(contratoRef, {
+        ...(config ? { config_calculadora: config } : {}),
+        atualizado_em: serverTimestamp(),
+      });
+
+      return atualizados;
+    });
+
+    return { ok: true, message: `Planejamento salvo: ${atualizados} lote(s) atualizado(s).` };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Erro ao salvar o planejamento.",
     };
   }
 }

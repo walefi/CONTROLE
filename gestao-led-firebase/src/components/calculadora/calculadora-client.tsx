@@ -16,7 +16,7 @@ import {
   type ModuloLedSpec,
 } from "@/lib/calculadora-constants";
 import { brl } from "@/lib/format";
-import { qtdDisponivel, type Contrato, type Produto } from "@/lib/types";
+import { qtdDisponivel, type Contrato, type ContratoItem, type Produto } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { CalculadoraConfig, TipoPainel } from "@/lib/types-calculadora";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { VincularDialog } from "@/components/calculadora/vincular-dialog";
+import { CarregarContrato } from "@/components/calculadora/carregar-contrato";
 
 function formatModuloOption(m: ModuloLedSpec): string {
   return `${m.pitch} — ${m.resolucao.largura}×${m.resolucao.altura}px (${m.dimensao.largura}×${m.dimensao.altura}mm)`;
@@ -83,9 +84,11 @@ function buildDefaultConfig(): CalculadoraConfig {
 export function CalculadoraClient({
   produtos,
   contratos,
+  itens,
 }: {
   produtos: Produto[];
   contratos: Contrato[];
+  itens: ContratoItem[];
 }) {
   const [config, setConfig] = useState<CalculadoraConfig>(buildDefaultConfig);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -203,6 +206,8 @@ export function CalculadoraClient({
           Calcule automaticamente os insumos necessários para montagem de painéis de LED
         </p>
       </div>
+
+      <CarregarContrato produtos={produtos} contratos={contratos} itens={itens} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
