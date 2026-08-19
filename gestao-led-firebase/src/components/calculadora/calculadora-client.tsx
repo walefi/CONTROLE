@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Link } from "lucide-react";
+import { FileText, Link } from "lucide-react";
+import { toast } from "sonner";
 import { calcular } from "@/lib/calculadora";
 import {
   AMBIENTES,
@@ -40,6 +41,8 @@ import {
 } from "@/components/ui/table";
 import { VincularDialog } from "@/components/calculadora/vincular-dialog";
 import { CarregarContrato } from "@/components/calculadora/carregar-contrato";
+import { UploadContratoDialog } from "@/components/calculadora/upload-contrato-dialog";
+import type { DimensoesPainel, ItemIdentificado } from "@/lib/contrato-pdf";
 
 function formatModuloOption(m: ModuloLedSpec): string {
   return `${m.pitch} — ${m.resolucao.largura}×${m.resolucao.altura}px (${m.dimensao.largura}×${m.dimensao.altura}mm)`;
@@ -92,6 +95,34 @@ export function CalculadoraClient({
 }) {
   const [config, setConfig] = useState<CalculadoraConfig>(buildDefaultConfig);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+
+  function aplicarContratoImportado(
+    itens: ItemIdentificado[],
+    dimensoes: DimensoesPainel | null
+  ) {
+    setConfig((prev) => {
+      const next = { ...prev };
+      if (dimensoes) {
+        next.larguraM = dimensoes.larguraM;
+        next.alturaM = dimensoes.alturaM;
+      }
+      const chaves = [
+        ["Módulo", "moduloProdutoId"],
+        ["Receiver", "receivingProdutoId"],
+        ["Fonte", "fonteProdutoId"],
+        ["Processadora", "processadoraProdutoId"],
+        ["Gabinete", "gabineteProdutoId"],
+        ["Imã", "imaProdutoId"],
+      ] as const;
+      for (const [categoria, chave] of chaves) {
+        const item = itens.find((i) => i.categoria === categoria);
+        if (item) next[chave] = item.produtoId;
+      }
+      return next;
+    });
+    toast.success("Componentes do contrato pré-selecionados no estoque.");
+  }
 
   function update<K extends keyof CalculadoraConfig>(key: K, value: CalculadoraConfig[K]) {
     setConfig((prev) => {
@@ -200,11 +231,17 @@ export function CalculadoraClient({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Calculadora de Materiais</h1>
-        <p className="text-sm text-muted-foreground">
-          Calcule automaticamente os insumos necessários para montagem de painéis de LED
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Calculadora de Materiais</h1>
+          <p className="text-sm text-muted-foreground">
+            Calcule automaticamente os insumos necessários para montagem de painéis de LED
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setUploadOpen(true)}>
+          <FileText className="h-4 w-4" />
+          Upload de Contrato
+        </Button>
       </div>
 
       <CarregarContrato produtos={produtos} contratos={contratos} itens={itens} />
@@ -673,6 +710,13 @@ export function CalculadoraClient({
         result={result}
         produtos={produtos}
         contratos={contratos}
+      />
+
+      <UploadContratoDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        produtos={produtos}
+        onContratoCriado={aplicarContratoImportado}
       />
     </div>
   );
