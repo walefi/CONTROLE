@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { FileText, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { semAcentos } from "@/lib/csv";
 import {
-  extrairTextoPdf,
-  identificarItensDoContrato,
+  extrairTudoDoContrato,
+  pontuacaoItemEstoque,
   type DimensoesPainel,
   type ItemIdentificado,
+  type LinhaContrato,
   type ResultadoIdentificacao,
 } from "@/lib/contrato-pdf";
-import type { Produto } from "@/lib/types";
+import { qtdDisponivel, type Produto } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { adicionarItem, criarContrato } from "@/services/contratos";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -39,13 +46,32 @@ type Props = {
   onContratoCriado: (itens: ItemIdentificado[], dimensoes: DimensoesPainel | null) => void;
 };
 
+const formatarValor = (v: number) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** Sugere o item de estoque com maior pontuação de similaridade (>= 0.75). */
+function melhorItemEstoque(nome: string, produtos: Produto[]): string | null {
+  let melhorId: string | null = null;
+  let melhorScore = 0;
+  for (const p of produtos) {
+    const score = pontuacaoItemEstoque(nome, p.item);
+    if (score > melhorScore) {
+      melhorScore = score;
+      melhorId = p.id;
+    }
+  }
+  return melhorScore >= 0.75 ? melhorId : null;
+}
+
 export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoCriado }: Props) {
   const [lendo, setLendo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [nomeArquivo, setNomeArquivo] = useState("");
   const [resultado, setResultado] = useState<ResultadoIdentificacao | null>(null);
-  const [quantidades, setQuantidades] = useState<Record<string, string>>({});
-  const [incluidos, setIncluidos] = useState<Record<string, boolean>>({});
+  const [nomes, setNomes] = useState<Record<number, string>>({});
+  const [quantidades, setQuantidades] = useState<Record<number, string>>({});
+  const [estoqueIds, setEstoqueIds] = useState<Record<number, string>>({});
+  const [incluidos, setIncluidos] = useState<Record<number, boolean>>({});
   const [cliente, setCliente] = useState("");
   const [anoProv, setAnoProv] = useState("");
   const [prazo, setPrazo] = useState("");
@@ -54,7 +80,9 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
   function reset() {
     setResultado(null);
     setNomeArquivo("");
+    setNomes({});
     setQuantidades({});
+    setEstoqueIds({});
     setIncluidos({});
     setCliente("");
     setAnoProv("");
@@ -69,9 +97,9 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
     if (!o) reset();
   }
 
-  function alterarQuantidade(produtoId: string, valor: string) {
+  function alterarQuantidade(idx: number, valor: string) {
     const limpo = valor.replace(/\D/g, "");
-    setQuantidades((q) => ({ ...q, [produtoId]: limpo }));
+    setQuantidades((q) => ({ ...q, [idx]: limpo }));
   }
 
   async function onArquivo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -82,26 +110,25 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
     setLendo(true);
     setNomeArquivo(arquivo.name);
     try {
-      const texto = await extrairTextoPdf(arquivo);
-      if (!semAcentos(texto).replace(/\s/g, "")) {
+      const res = await extrairTudoDoContrato(arquivo);
+      if (res.linhas.length === 0) {
         throw new Error(
-          "Nenhum texto encontrado no PDF. Verifique se o arquivo é um PDF com texto selecionável (não escaneado/imagem)."
-        );
-      }
-      const res = identificarItensDoContrato(texto, produtos);
-      if (res.itens.length === 0) {
-        throw new Error(
-          "Nenhum componente do estoque foi identificado no contrato. Confira se os nomes dos produtos cadastrados aparecem no PDF."
+          "Não foi possível localizar a tabela de itens (colunas ITEM/QTD/VALOR) no PDF. " +
+            "Verifique se o arquivo tem texto selecionável (não escaneado) e se a tabela usa essas colunas."
         );
       }
       setResultado(res);
       setCliente(res.cliente);
       setAnoProv(res.anoProv);
       setTamanhoPainel(res.tamanhoPainel);
+      setNomes(Object.fromEntries(res.linhas.map((l, i) => [i, l.nome])));
       setQuantidades(
-        Object.fromEntries(res.itens.map((i) => [i.produtoId, i.quantidade ? String(i.quantidade) : ""]))
+        Object.fromEntries(res.linhas.map((l, i) => [i, l.quantidade ? String(l.quantidade) : ""]))
       );
-      setIncluidos(Object.fromEntries(res.itens.map((i) => [i.produtoId, true])));
+      setEstoqueIds(
+        Object.fromEntries(res.linhas.map((l, i) => [i, melhorItemEstoque(l.nome, produtos) ?? ""]))
+      );
+      setIncluidos(Object.fromEntries(res.linhas.map((_, i) => [i, true])));
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível ler o arquivo.");
       setResultado(null);
@@ -109,18 +136,23 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
     setLendo(false);
   }
 
-  function itensValidos(): ItemIdentificado[] {
+  function linhasVinculaveis(): LinhaContrato[] {
     if (!resultado) return [];
-    return resultado.itens.filter(
-      (i) => incluidos[i.produtoId] && (parseInt(quantidades[i.produtoId] || "0", 10) || 0) > 0
-    );
+    return resultado.linhas.filter((_, i) => {
+      if (!(incluidos[i] ?? true)) return false;
+      if (!((parseInt(quantidades[i] || "0", 10) || 0) > 0)) return false;
+      if (!estoqueIds[i]) return false;
+      return true;
+    });
   }
 
   async function confirmar() {
     if (!resultado) return;
-    const validos = itensValidos();
-    if (validos.length === 0) {
-      toast.error("Marque ao menos um componente com quantidade maior que zero.");
+    const validas = linhasVinculaveis();
+    if (validas.length === 0) {
+      toast.error(
+        "Selecione ao menos um componente com quantidade maior que zero e um item do estoque correspondente."
+      );
       return;
     }
     if (!cliente.trim() || !anoProv.trim()) {
@@ -143,24 +175,30 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
       }
 
       const vinculados: ItemIdentificado[] = [];
-      for (const item of validos) {
-        const r = await adicionarItem(
-          res.id,
-          item.produtoId,
-          parseInt(quantidades[item.produtoId] || "0", 10)
-        );
+      for (const linha of validas) {
+        const idx = resultado.linhas.indexOf(linha);
+        const produto = produtos.find((p) => p.id === estoqueIds[idx]);
+        if (!produto) continue;
+        const qtd = parseInt(quantidades[idx] || "0", 10);
+        const r = await adicionarItem(res.id, produto.id, qtd);
         if (r.ok) {
-          vinculados.push(item);
+          vinculados.push({
+            produtoId: produto.id,
+            item: produto.item,
+            categoria: produto.categoria,
+            lote: produto.lote,
+            quantidade: qtd,
+          });
         } else {
-          toast.error(`"${item.item}": ${r.message}`);
+          toast.error(`"${produto.item}": ${r.message}`);
         }
       }
 
-      if (vinculados.length === validos.length) {
+      if (vinculados.length === validas.length) {
         toast.success(`Contrato ${anoProv.trim()} criado com ${vinculados.length} componente(s).`);
       } else {
         toast.warning(
-          `Contrato criado, mas ${validos.length - vinculados.length} componente(s) não foram vinculados.`
+          `Contrato criado, mas ${validas.length - vinculados.length} componente(s) não foram vinculados.`
         );
       }
 
@@ -174,16 +212,26 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
     }
   }
 
-  const semQuantidade = resultado?.itens.some((i) => !quantidades[i.produtoId]);
+  const itensEstoque = [...produtos]
+    .sort((a, b) => a.categoria.localeCompare(b.categoria) || a.item.localeCompare(b.item))
+    .map((p) => ({
+      value: p.id,
+      label: `${p.categoria} · ${p.item}${p.lote ? ` (${p.lote})` : ""} — disp ${qtdDisponivel(p)}`,
+    }));
+
+  const semQuantidade = resultado?.linhas.some((_, i) => !quantidades[i]);
+  const semEstoque = resultado?.linhas.some(
+    (_, i) => (incluidos[i] ?? true) && (parseInt(quantidades[i] || "0", 10) || 0) > 0 && !estoqueIds[i]
+  );
 
   return (
     <Dialog open={open} onOpenChange={fechar}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Upload de Contrato (PDF)</DialogTitle>
           <DialogDescription>
-            Envie o contrato em PDF. O sistema identifica os componentes vendidos, cria o
-            contrato e pré-seleciona os itens na calculadora.
+            Envie o contrato em PDF. O sistema lista os componentes da tabela ITEM/QTD/VALOR —
+            para cada um, escolha o item do estoque que atende.
           </DialogDescription>
         </DialogHeader>
 
@@ -223,7 +271,7 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
               <p>
                 <span className="font-medium">{nomeArquivo}</span>{" "}
                 <span className="text-muted-foreground">
-                  · {resultado.itens.length} componente(s) identificado(s)
+                  · {resultado.linhas.length} componente(s) na tabela
                 </span>
               </p>
               {semQuantidade && (
@@ -273,48 +321,78 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm">Componentes identificados</Label>
+              <Label className="text-sm">Componentes do contrato</Label>
               <p className="text-xs text-zinc-500">
-                Desmarque o que não for vendido neste contrato e confira as quantidades.
+                Confira o nome e a quantidade e escolha o item do estoque que atende cada
+                componente. Desmarque o que não for vendido neste contrato.
               </p>
               <div className="rounded-lg border">
                 <Table className="text-xs">
                   <TableHeader className="bg-muted/50">
                     <TableRow>
                       <TableHead className="w-8" />
-                      <TableHead>Componente</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead>Lote</TableHead>
-                      <TableHead className="w-28">Quantidade</TableHead>
+                      <TableHead className="min-w-44">Item (contrato)</TableHead>
+                      <TableHead className="w-24">Qtd</TableHead>
+                      <TableHead className="w-24">Valor</TableHead>
+                      <TableHead className="min-w-56">Item do estoque</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {resultado.itens.map((item) => {
-                      const incluido = incluidos[item.produtoId] ?? true;
+                    {resultado.linhas.map((linha, i) => {
+                      const incluido = incluidos[i] ?? true;
                       return (
-                        <TableRow key={item.produtoId} className={cn(!incluido && "opacity-50")}>
+                        <TableRow key={i} className={cn(!incluido && "opacity-50")}>
                           <TableCell>
                             <input
                               type="checkbox"
                               className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 accent-blue-600"
                               checked={incluido}
                               onChange={(e) =>
-                                setIncluidos((s) => ({ ...s, [item.produtoId]: e.target.checked }))
+                                setIncluidos((s) => ({ ...s, [i]: e.target.checked }))
                               }
                             />
                           </TableCell>
-                          <TableCell className="font-medium">{item.item}</TableCell>
-                          <TableCell>{item.categoria}</TableCell>
-                          <TableCell className="font-mono">{item.lote || "—"}</TableCell>
+                          <TableCell>
+                            <Input
+                              className="h-8 text-sm"
+                              value={nomes[i] ?? ""}
+                              onChange={(e) => setNomes((s) => ({ ...s, [i]: e.target.value }))}
+                            />
+                          </TableCell>
                           <TableCell>
                             <Input
                               type="number"
                               min={0}
                               className="h-8 text-sm tabular-nums"
                               placeholder="?"
-                              value={quantidades[item.produtoId] ?? ""}
-                              onChange={(e) => alterarQuantidade(item.produtoId, e.target.value)}
+                              value={quantidades[i] ?? ""}
+                              onChange={(e) => alterarQuantidade(i, e.target.value)}
                             />
+                          </TableCell>
+                          <TableCell className="tabular-nums text-zinc-500">
+                            {linha.valor !== null ? formatarValor(linha.valor) : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              items={itensEstoque}
+                              value={estoqueIds[i] ?? ""}
+                              onValueChange={(v) =>
+                                setEstoqueIds((s) => ({ ...s, [i]: v ?? "" }))
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-full text-sm">
+                                <SelectValue placeholder="Escolher item do estoque" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {itensEstoque.map((op) => (
+                                  <SelectItem key={op.value} value={op.value}>
+                                    <span className="flex w-full items-center justify-between gap-2">
+                                      <span>{op.label}</span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                         </TableRow>
                       );
@@ -326,6 +404,12 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
                 <p className="text-xs text-muted-foreground">
                   Itens sem quantidade detectada ficam com o campo vazio — preencha antes de
                   confirmar.
+                </p>
+              )}
+              {semEstoque && (
+                <p className="text-xs text-muted-foreground">
+                  Componentes marcados sem item do estoque selecionado não serão vinculados ao
+                  contrato.
                 </p>
               )}
             </div>
@@ -345,7 +429,7 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
               <Button variant="outline" onClick={reset} disabled={salvando}>
                 Escolher outro arquivo
               </Button>
-              <Button onClick={confirmar} disabled={salvando || itensValidos().length === 0}>
+              <Button onClick={confirmar} disabled={salvando || linhasVinculaveis().length === 0}>
                 {salvando ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -354,7 +438,7 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
                 ) : (
                   <>
                     <Upload className="h-4 w-4" />
-                    Criar contrato ({itensValidos().length} itens)
+                    Criar contrato ({linhasVinculaveis().length} itens)
                   </>
                 )}
               </Button>

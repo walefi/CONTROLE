@@ -1,12 +1,11 @@
 import { Loader2 } from "lucide-react";
 import { useColecao } from "@/hooks/use-colecao";
-import type { Contrato, ContratoItem, Produto } from "@/lib/types";
+import type { Contrato, Produto } from "@/lib/types";
 import { CalculadoraClient } from "@/components/calculadora/calculadora-client";
 
 export default function CalculadoraPage() {
   const { dados: produtos, carregando: carregandoProdutos } = useColecao<Produto>("produtos");
   const { dados: contratos, carregando: carregandoContratos } = useColecao<Contrato>("contratos");
-  const { dados: itens } = useColecao<ContratoItem>("contrato_itens");
 
   if (carregandoProdutos || carregandoContratos) {
     return (
@@ -16,5 +15,5 @@ export default function CalculadoraPage() {
     );
   }
 
-  return <CalculadoraClient produtos={produtos} contratos={contratos} itens={itens} />;
+  return <CalculadoraClient produtos={produtos} contratos={contratos} />;
 }

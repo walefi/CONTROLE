@@ -17,7 +17,7 @@ import {
   type ModuloLedSpec,
 } from "@/lib/calculadora-constants";
 import { brl } from "@/lib/format";
-import { qtdDisponivel, type Contrato, type ContratoItem, type Produto } from "@/lib/types";
+import { qtdDisponivel, type Contrato, type Produto } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { CalculadoraConfig, TipoPainel } from "@/lib/types-calculadora";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { VincularDialog } from "@/components/calculadora/vincular-dialog";
-import { CarregarContrato } from "@/components/calculadora/carregar-contrato";
 import { UploadContratoDialog } from "@/components/calculadora/upload-contrato-dialog";
 import type { DimensoesPainel, ItemIdentificado } from "@/lib/contrato-pdf";
 
@@ -87,11 +86,9 @@ function buildDefaultConfig(): CalculadoraConfig {
 export function CalculadoraClient({
   produtos,
   contratos,
-  itens,
 }: {
   produtos: Produto[];
   contratos: Contrato[];
-  itens: ContratoItem[];
 }) {
   const [config, setConfig] = useState<CalculadoraConfig>(buildDefaultConfig);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -243,8 +240,6 @@ export function CalculadoraClient({
           Upload de Contrato
         </Button>
       </div>
-
-      <CarregarContrato produtos={produtos} contratos={contratos} itens={itens} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

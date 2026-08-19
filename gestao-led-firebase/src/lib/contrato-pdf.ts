@@ -1,5 +1,4 @@
 import { semAcentos } from "@/lib/csv";
-import type { Produto } from "@/lib/types";
 
 export type ItemIdentificado = {
   produtoId: string;
@@ -11,8 +10,14 @@ export type ItemIdentificado = {
 
 export type DimensoesPainel = { larguraM: number; alturaM: number };
 
+export type LinhaContrato = {
+  nome: string;
+  quantidade: number;
+  valor: number | null;
+};
+
 export type ResultadoIdentificacao = {
-  itens: ItemIdentificado[];
+  linhas: LinhaContrato[];
   cliente: string;
   anoProv: string;
   tamanhoPainel: string;
@@ -56,26 +61,6 @@ function normalizar(texto: string): string {
   return semAcentos(texto).toUpperCase();
 }
 
-function escaparRegex(texto: string): string {
-  return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Itens curtos (ex.: "M3") exigem fronteira de palavra para evitar falsos positivos. */
-function contemAlvo(texto: string, alvo: string): boolean {
-  if (alvo.length >= 5) return texto.includes(alvo);
-  return new RegExp(`(^|[^A-Z0-9])${escaparRegex(alvo)}($|[^A-Z0-9])`).test(texto);
-}
-
-/** Remove preços e medidas (320x160mm, 4,00m x 2,00m, R$ 45,00) antes de procurar a quantidade. */
-function limparLinhaParaQuantidade(linha: string): string {
-  return linha
-    .replace(/R\$\s*\d+(?:[.,]\d+)*/g, " ")
-    .replace(/\d+(?:[.,]\d+)?\s*[xX×]\s*\d+(?:[.,]\d+)?\s*(?:mm|cm|m)?/g, " ")
-    .replace(/\d+(?:[.,]\d+)?\s*(?:mm|cm|m\b)/g, " ")
-    .replace(/\d+\s*portas?\b/gi, " ")
-    .replace(/\b(?:un|und|unid|unidades?|qtd|quantidade|pç|pcs?|und\.)\b/gi, " ");
-}
-
 function inteiroDeToken(token: string): number | null {
   let t = token;
   if (t.includes(",")) return null; // decimal -> preço
@@ -87,23 +72,12 @@ function inteiroDeToken(token: string): number | null {
   return n;
 }
 
-/** Procura a quantidade em uma linha, dando preferência a números após o nome do item. */
-function primeiraQuantidade(linha: string, alvo: string): number {
-  const limpa = limparLinhaParaQuantidade(linha);
-  const normalizada = normalizar(limpa);
-  const fimAlvo = normalizada.lastIndexOf(alvo) + alvo.length;
-
-  const antes: number[] = [];
-  for (const m of limpa.matchAll(/\d+(?:[.,]\d+)*/g)) {
-    const valor = inteiroDeToken(m[0]);
-    if (valor === null) continue;
-    if (fimAlvo > 0 && (m.index ?? -1) < fimAlvo) {
-      antes.push(valor);
-      continue;
-    }
-    return valor;
-  }
-  return antes.length === 1 ? antes[0] : 0;
+function parseDecimal(texto: string): number | null {
+  let t = texto.replace(/\s/g, "");
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function extrairCliente(texto: string): string {
@@ -123,14 +97,6 @@ function extrairAnoProv(texto: string): string {
   const m = texto.match(/ano\s*\/?\s*prov\s*[:.-]?\s*([^\n]{1,40})/i);
   if (!m) return "";
   return m[1].replace(/\s{2,}/g, " ").trim();
-}
-
-function parseDecimal(texto: string): number | null {
-  let t = texto.replace(/\s/g, "");
-  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
-  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
-  const n = Number(t);
-  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function extrairTamanhoPainel(texto: string): {
@@ -163,41 +129,107 @@ function extrairTamanhoPainel(texto: string): {
   };
 }
 
+/** Linhas que não são itens da tabela (totais, rodapés, campos do contrato). */
+const PREFIXOS_IGNORADOS =
+  /^(?:PAGINA?|PAGE|TOTAL|SUBTOTAL|SUB\s+TOTAL|OBSERVACOES?|OBS|PRAZO|GARANTIA|VALIDADE|ENTREGA|DATA|ENDERECO?|CNPJ|CEP|TELEFONE|CONDICOES|CONDIÇÕES|FORMA\s+DE\s+PAGAMENTO|PAGAMENTO|ASSINATURA|RESPONS[ÁA]VEL|FATURAMENTO|ANO|PAINEL)/i;
+
+type TokenNumerico = { indice: number; texto: string; inteiro: number | null };
+
+function tokensNumericos(linha: string): TokenNumerico[] {
+  const tokens: TokenNumerico[] = [];
+  for (const m of linha.matchAll(/\d+(?:[.,]\d+)*/g)) {
+    tokens.push({ indice: m.index ?? -1, texto: m[0], inteiro: inteiroDeToken(m[0]) });
+  }
+  return tokens;
+}
+
 /**
- * Identifica no texto do contrato quais produtos do estoque estão sendo vendidos,
- * tentando extrair a quantidade de cada um a partir da linha em que aparece.
+ * Interpreta uma linha da tabela ITEM/QTD/VALOR.
+ * A quantidade é o último inteiro que não faz parte do nome (M3, 40A, MRV416-N) nem de um preço (R$ 45).
  */
-export function identificarItensDoContrato(
-  texto: string,
-  produtos: Produto[]
-): ResultadoIdentificacao {
-  const linhas = texto.split(/\r?\n/);
-  const textoNormalizado = normalizar(texto);
-  const itens: ItemIdentificado[] = [];
+function parseLinhaTabela(linha: string): LinhaContrato | null {
+  const tokens = tokensNumericos(linha);
+  if (tokens.length === 0) return null;
 
-  for (const produto of produtos) {
-    const alvo = normalizar(produto.item).trim();
-    if (!alvo) continue;
-    if (!contemAlvo(textoNormalizado, alvo)) continue;
+  let qtdIdx = -1;
+  let qtdValor = 0;
+  for (const t of tokens) {
+    if (t.inteiro === null) continue;
+    const antes = linha.slice(0, t.indice);
+    if (/[A-Za-zÀ-ÿ]$/.test(antes)) continue; // parte de um nome (M3, 40A, MRV416)
+    if (/R\$\s*$/i.test(antes)) continue; // parte de um preço sem centavos
+    qtdIdx = t.indice;
+    qtdValor = t.inteiro;
+  }
+  if (qtdIdx < 0) return null;
 
-    let quantidade = 0;
-    for (const linha of linhas) {
-      if (!contemAlvo(normalizar(linha), alvo)) continue;
-      const q = primeiraQuantidade(linha, alvo);
-      if (q > quantidade) quantidade = q;
-    }
-
-    itens.push({
-      produtoId: produto.id,
-      item: produto.item,
-      categoria: produto.categoria,
-      lote: produto.lote,
-      quantidade,
-    });
+  // Valor unitário: primeiro decimal (com vírgula) depois da quantidade; senão um "R$ ..." explícito.
+  let valor: number | null = null;
+  for (const t of tokens) {
+    if (t.indice <= qtdIdx || !t.texto.includes(",")) continue;
+    valor = parseDecimal(t.texto);
+    break;
+  }
+  if (valor === null) {
+    const m = linha.slice(qtdIdx).match(/R\$\s*(\d+(?:[.,]\d+)*)/i);
+    if (m) valor = parseDecimal(m[1]);
   }
 
+  const nome = linha
+    .slice(0, qtdIdx)
+    .replace(/[|:;–—]+/g, " ") // separadores de célula (hífen "-" é parte de nomes como MRV416-N)
+    .replace(/^[\d.]+\s+/, "") // número de linha ("1 Módulo ...")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!nome) return null;
+
+  return { nome: nome.slice(0, 150), quantidade: qtdValor, valor };
+}
+
+/**
+ * Extrai as linhas da tabela de itens do contrato (colunas ITEM/QTD/VALOR).
+ * Retorna todos os componentes listados, sem tentar casar com o estoque —
+ * o vínculo com o item de estoque é escolhido pelo usuário.
+ */
+export function extrairTabelaContrato(texto: string): LinhaContrato[] {
+  const linhas = texto.split(/\r?\n/).map((l) => l.trim());
+  const idxCabecalho = linhas.findIndex((l) => {
+    const n = normalizar(l);
+    return n.includes("ITEM") && (n.includes("QTD") || n.includes("QUANTIDADE"));
+  });
+  if (idxCabecalho < 0) return [];
+
+  const itens: LinhaContrato[] = [];
+  for (let i = idxCabecalho + 1; i < linhas.length && itens.length < 200; i++) {
+    const linha = linhas[i];
+    if (!linha) continue;
+    const n = normalizar(linha);
+    if (n.includes("ITEM") && (n.includes("QTD") || n.includes("VALOR"))) continue; // cabeçalho repetido
+    if (PREFIXOS_IGNORADOS.test(linha)) continue;
+    const item = parseLinhaTabela(linha);
+    if (item) itens.push(item);
+  }
+  return itens;
+}
+
+/** Pontua (0..1) o quanto um item do estoque se parece com o nome do componente no contrato. */
+export function pontuacaoItemEstoque(nomeContrato: string, itemEstoque: string): number {
+  const alvo = normalizar(itemEstoque).trim();
+  const nome = normalizar(nomeContrato);
+  if (!alvo || !nome) return 0;
+  const tokens = alvo.split(/[^A-Z0-9]+/).filter((t) => t.length > 0);
+  if (tokens.length === 0) return 0;
+  let acertos = 0;
+  for (const t of tokens) {
+    if (nome.includes(t)) acertos++;
+  }
+  return acertos / tokens.length;
+}
+
+export async function extrairTudoDoContrato(arquivo: File): Promise<ResultadoIdentificacao> {
+  const texto = await extrairTextoPdf(arquivo);
   return {
-    itens,
+    linhas: extrairTabelaContrato(texto),
     cliente: extrairCliente(texto),
     anoProv: extrairAnoProv(texto),
     ...extrairTamanhoPainel(texto),

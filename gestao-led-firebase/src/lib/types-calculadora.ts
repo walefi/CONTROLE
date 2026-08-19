@@ -37,20 +37,6 @@ export type CalculadoraConfig = {
   imaProdutoId: string | null;
 };
 
-export type ConfigCalculadoraContrato = {
-  tipoPainel: TipoPainel;
-  moduloPitch: string | null;
-  tecnologia: string | null;
-  tipoHub: string | null;
-  receivingModelo: string | null;
-  fonteAmperagem: "40A" | "60A" | null;
-  ambiente: string | null;
-  modeloIma: string | null;
-  processadoraModelo: string | null;
-  gabineteLargura: number | null;
-  gabineteAltura: number | null;
-};
-
 export type CalculadoraResult = {
   larguraMm: number;
   alturaMm: number;
