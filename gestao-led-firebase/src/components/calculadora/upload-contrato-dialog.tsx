@@ -112,10 +112,7 @@ export function UploadContratoDialog({ open, onOpenChange, produtos, onContratoC
     try {
       const res = await extrairTudoDoContrato(arquivo);
       if (res.linhas.length === 0) {
-        throw new Error(
-          "Não foi possível localizar a tabela de itens (colunas ITEM/QTD/VALOR) no PDF. " +
-            "Verifique se o arquivo tem texto selecionável (não escaneado) e se a tabela usa essas colunas."
-        );
+        throw new Error("Tabela de componentes não localizada");
       }
       setResultado(res);
       setCliente(res.cliente);

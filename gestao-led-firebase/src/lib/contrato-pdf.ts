@@ -186,22 +186,32 @@ function parseLinhaTabela(linha: string): LinhaContrato | null {
   return { nome: nome.slice(0, 150), quantidade: qtdValor, valor };
 }
 
-/**
- * Extrai as linhas da tabela de itens do contrato (colunas ITEM/QTD/VALOR).
- * Retorna todos os componentes listados, sem tentar casar com o estoque —
- * o vínculo com o item de estoque é escolhido pelo usuário.
- */
+/** Âncora de início da tabela de componentes (fim da cláusula "PARÁGRAFO PRIMEIRO"). */
+const INICIO_TABELA = "ESPECIFICACAO PAINEL";
+/** Âncora de fim da tabela (cláusula "DO VALOR E PAGAMENTO"). */
+const FIM_TABELA = "DO VALOR E PAGAMENTO";
+
 export function extrairTabelaContrato(texto: string): LinhaContrato[] {
   const linhas = texto.split(/\r?\n/).map((l) => l.trim());
-  const idxCabecalho = linhas.findIndex((l) => {
+
+  const idxInicio = linhas.findIndex((l) => normalizar(l).includes(INICIO_TABELA));
+  if (idxInicio < 0) return [];
+
+  const idxFim = linhas.findIndex(
+    (l, i) => i > idxInicio && normalizar(l).includes(FIM_TABELA)
+  );
+  if (idxFim < 0) return [];
+
+  const trecho = linhas.slice(idxInicio + 1, idxFim);
+  const idxCabecalho = trecho.findIndex((l) => {
     const n = normalizar(l);
     return n.includes("ITEM") && (n.includes("QTD") || n.includes("QUANTIDADE"));
   });
   if (idxCabecalho < 0) return [];
 
   const itens: LinhaContrato[] = [];
-  for (let i = idxCabecalho + 1; i < linhas.length && itens.length < 200; i++) {
-    const linha = linhas[i];
+  for (let i = idxCabecalho + 1; i < trecho.length && itens.length < 200; i++) {
+    const linha = trecho[i];
     if (!linha) continue;
     const n = normalizar(linha);
     if (n.includes("ITEM") && (n.includes("QTD") || n.includes("VALOR"))) continue; // cabeçalho repetido
