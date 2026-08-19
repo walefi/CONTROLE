@@ -131,7 +131,7 @@ function extrairTamanhoPainel(texto: string): {
 
 /** Linhas que não são itens da tabela (totais, rodapés, campos do contrato). */
 const PREFIXOS_IGNORADOS =
-  /^(?:PAGINA?|PAGE|TOTAL|SUBTOTAL|SUB\s+TOTAL|OBSERVACOES?|OBS|PRAZO|GARANTIA|VALIDADE|ENTREGA|DATA|ENDERECO?|CNPJ|CEP|TELEFONE|CONDICOES|CONDIÇÕES|FORMA\s+DE\s+PAGAMENTO|PAGAMENTO|ASSINATURA|RESPONS[ÁA]VEL|FATURAMENTO|ANO|PAINEL)/i;
+  /^(?:PAGINA?|PAGE|TOTAL|SUBTOTAL|SUB\s+TOTAL|OBSERVACOES?|OBS|PRAZO|GARANTIA|VALIDADE|ENTREGA|DATA|ENDERECO?|CNPJ|CEP|TELEFONE|CONDICOES|CONDIÇÕES|FORMA\s+DE\s+PAGAMENTO|PAGAMENTO|ASSINATURA|RESPONS[ÁA]VEL|FATURAMENTO|ANO)/i;
 
 type TokenNumerico = { indice: number; texto: string; inteiro: number | null };
 
@@ -236,12 +236,21 @@ export function pontuacaoItemEstoque(nomeContrato: string, itemEstoque: string):
   return acertos / tokens.length;
 }
 
+export function comporLinhasContrato(
+  linhas: LinhaContrato[],
+  tamanhoPainel: string
+): LinhaContrato[] {
+  if (!tamanhoPainel || linhas.some((l) => normalizar(l.nome).includes("PAINEL"))) return linhas;
+  return [{ nome: `Painel ${tamanhoPainel}`, quantidade: 1, valor: null }, ...linhas];
+}
+
 export async function extrairTudoDoContrato(arquivo: File): Promise<ResultadoIdentificacao> {
   const texto = await extrairTextoPdf(arquivo);
+  const tamanho = extrairTamanhoPainel(texto);
   return {
-    linhas: extrairTabelaContrato(texto),
+    linhas: comporLinhasContrato(extrairTabelaContrato(texto), tamanho.tamanhoPainel),
     cliente: extrairCliente(texto),
     anoProv: extrairAnoProv(texto),
-    ...extrairTamanhoPainel(texto),
+    ...tamanho,
   };
 }
